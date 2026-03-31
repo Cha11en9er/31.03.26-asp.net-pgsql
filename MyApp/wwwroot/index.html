@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <title>ТГК-2 | Личный кабинет клиента</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="page">
+<header class="topbar">
+    <div class="topbar-inner">
+        <div>
+            <div class="brand">Портал клиентов ТГК-2</div>
+            <div class="brand-sub">Теплоснабжение, договоры, сервисы для бизнеса</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="btn btn-light" href="profile.html">Профиль</a>
+            <a class="btn btn-light" href="login.html">Вход</a>
+        </div>
+    </div>
+</header>
+
+<main class="main-container">
+    <section class="hero">
+        <h1>Главная страница</h1>
+        <p>
+            Актуальные новости компании и каталог услуг по теплоснабжению и энергетическому сопровождению.
+        </p>
+    </section>
+
+    <section class="grid grid-2">
+        <div class="panel">
+            <h2>Каталог услуг</h2>
+            <p class="muted">Выберите услугу. Для подключения потребуется авторизация (кнопка «Профиль»).</p>
+            <div id="products" class="products">Загрузка...</div>
+        </div>
+
+        <div class="panel">
+            <h2>Новости и объявления</h2>
+            <div id="news" class="news-list">Загрузка...</div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="footer">
+    <div class="footer-inner">
+        <div>ТГК-2 • Электронный кабинет контрагентов</div>
+        <div>Тарифы и услуги представлены в рублях</div>
+    </div>
+</footer>
+
+<script>
+function money(v) {
+    return new Intl.NumberFormat('ru-RU').format(Number(v || 0)) + ' ₽';
+}
+
+async function loadProducts() {
+    const res = await fetch('/api/products');
+    const products = await res.json();
+    const el = document.getElementById('products');
+    el.innerHTML = products.map(p => `
+        <article class="product-card">
+            <h3>${escapeHtml(p.name)}</h3>
+            <p class="muted">${escapeHtml(p.description)}</p>
+            <p class="product-price">${money(p.priceRub)}</p>
+            <button class="btn" onclick="orderProduct(${p.id})">Заказать</button>
+        </article>
+    `).join('');
+}
+
+async function loadNews() {
+    const res = await fetch('/api/news');
+    if (!res.ok) {
+        document.getElementById('news').innerHTML = '<p class="muted">Не удалось загрузить новости.</p>';
+        return;
+    }
+    const items = await res.json();
+    const el = document.getElementById('news');
+    if (!items.length) {
+        el.innerHTML = '<p class="muted">Пока нет опубликованных новостей.</p>';
+        return;
+    }
+    el.innerHTML = items.map(n => `
+        <article class="news-item">
+            <h3>${escapeHtml(n.title)}</h3>
+            <p>${escapeHtml(n.content)}</p>
+        </article>
+    `).join('');
+}
+
+async function orderProduct(productId) {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        alert('Для подключения услуги сначала войдите в аккаунт.');
+        window.location.href = 'login.html';
+        return;
+    }
+    const res = await fetch('/api/profile/services', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ productId })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Не удалось создать договор');
+        return;
+    }
+    const data = await res.json();
+    alert(data.message || 'Услуга подключена');
+}
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function init() {
+    await Promise.all([loadProducts(), loadNews()]);
+}
+
+init().catch(() => {});
+</script>
+</body>
+</html>

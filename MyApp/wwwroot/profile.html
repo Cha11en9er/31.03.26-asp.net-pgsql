@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <title>ТГК-2 | Профиль клиента</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="page">
+<header class="topbar">
+    <div class="topbar-inner">
+        <div>
+            <div class="brand">Портал клиентов ТГК-2</div>
+            <div class="brand-sub">Личный кабинет: финансы, услуги, договоры</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="btn btn-light" href="index.html">Главная</a>
+            <button class="btn btn-light" id="logoutBtn" type="button">Выйти</button>
+        </div>
+    </div>
+</header>
+
+<main class="main-container">
+    <section class="hero">
+        <h1>Профиль клиента</h1>
+        <p>Управляйте балансом, контролируйте задолженность и смотрите историю финансовых операций.</p>
+    </section>
+
+    <section class="grid grid-4" style="margin-bottom:16px;">
+        <div class="stat">
+            <div class="stat-title">Email</div>
+            <div class="stat-value" id="userEmail">—</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Баланс</div>
+            <div class="stat-value" id="balanceRub">0 ₽</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Задолженность</div>
+            <div class="stat-value" id="debtRub">0 ₽</div>
+        </div>
+        <div class="stat">
+            <div class="stat-title">Подключенные услуги</div>
+            <div class="stat-value" id="servicesCount">0</div>
+        </div>
+    </section>
+
+    <section class="grid grid-2">
+        <div class="panel">
+            <h2>Пополнение баланса</h2>
+            <p class="muted">Нажмите «+», введите сумму в рублях, затем подтвердите пополнение.</p>
+            <div style="display:flex; gap:8px; align-items:center; max-width:360px;">
+                <button class="btn" type="button" id="plusBtn" style="width:48px;">+</button>
+                <input id="topUpAmount" type="number" min="1" step="1" placeholder="Сумма, ₽" />
+                <button class="btn" type="button" onclick="topUp()">Пополнить</button>
+            </div>
+            <p class="muted">После пополнения долг уменьшается автоматически. Остаток зачисляется в баланс.</p>
+        </div>
+        <div class="panel">
+            <h2>Финансовые движения</h2>
+            <div id="transactions">Загрузка...</div>
+        </div>
+    </section>
+
+    <section class="panel" style="margin-top:16px;">
+        <h2>Мои договоры и услуги</h2>
+        <div id="servicesWrap">Загрузка...</div>
+    </section>
+</main>
+
+<footer class="footer">
+    <div class="footer-inner">
+        <div>ТГК-2 • Личный кабинет контрагентов</div>
+        <div>Все суммы отображаются в рублях</div>
+    </div>
+</footer>
+
+<script>
+const token = localStorage.getItem('token');
+if (!token) window.location.href = 'login.html';
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+});
+
+document.getElementById('plusBtn').addEventListener('click', () => {
+    document.getElementById('topUpAmount').focus();
+});
+
+function money(v) {
+    return new Intl.NumberFormat('ru-RU').format(Number(v || 0)) + ' ₽';
+}
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
+}
+
+async function api(path, options = {}) {
+    const res = await fetch(path, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            ...(options.headers || {})
+        }
+    });
+    if (res.status === 401 || res.status === 403) {
+        localStorage.removeItem('token');
+        window.location.href = 'login.html';
+        throw new Error('Не авторизован');
+    }
+    return res;
+}
+
+function renderServices(items) {
+    const wrap = document.getElementById('servicesWrap');
+    if (!items.length) {
+        wrap.innerHTML = '<p class="muted">Пока нет подключенных услуг. Перейдите на главную и выберите услугу.</p>';
+        return;
+    }
+    const rows = items.map(s => `
+        <tr>
+            <td>${escapeHtml(s.contractNumber)}</td>
+            <td>${escapeHtml(s.productName)}</td>
+            <td>${money(s.amountRub)}</td>
+            <td>${new Date(s.createdAt).toLocaleDateString('ru-RU')}</td>
+        </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Номер договора</th>
+                    <th>Услуга</th>
+                    <th>Сумма</th>
+                    <th>Дата</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function renderTransactions(items) {
+    const wrap = document.getElementById('transactions');
+    if (!items.length) {
+        wrap.innerHTML = '<p class="muted">Финансовых операций пока нет.</p>';
+        return;
+    }
+    const rows = items.map(t => `
+        <tr>
+            <td>${new Date(t.createdAt).toLocaleString('ru-RU')}</td>
+            <td>${escapeHtml(t.type)}</td>
+            <td>${escapeHtml(t.description)}</td>
+            <td>${money(t.amountRub)}</td>
+        </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Дата</th>
+                    <th>Тип</th>
+                    <th>Описание</th>
+                    <th>Сумма</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+async function loadProfile() {
+    const res = await api('/api/profile');
+    const data = await res.json();
+
+    const user = data.user || {};
+    const services = data.services || [];
+    const transactions = data.transactions || [];
+
+    document.getElementById('userEmail').textContent = user.email || '—';
+    document.getElementById('balanceRub').textContent = money(user.balanceRub);
+    document.getElementById('debtRub').textContent = money(user.debtRub);
+    document.getElementById('servicesCount').textContent = String(services.length);
+
+    renderServices(services);
+    renderTransactions(transactions);
+}
+
+async function topUp() {
+    const amount = Number(document.getElementById('topUpAmount').value || 0);
+    if (amount <= 0) {
+        alert('Введите сумму больше 0.');
+        return;
+    }
+
+    const res = await api('/api/profile/top-up', {
+        method: 'POST',
+        body: JSON.stringify({ amountRub: amount })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Ошибка пополнения.');
+        return;
+    }
+    document.getElementById('topUpAmount').value = '';
+    await loadProfile();
+}
+
+loadProfile().catch(() => {});
+</script>
+</body>
+</html>
+

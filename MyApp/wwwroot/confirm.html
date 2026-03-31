@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <title>ТГК-2 | Подтверждение email</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <div>
+            <div class="brand">Портал клиентов ТГК-2</div>
+            <div class="brand-sub">Подтверждение учетной записи</div>
+        </div>
+    </div>
+</header>
+
+<div class="auth-wrap">
+    <div class="card">
+        <h2>Подтверждение email</h2>
+        <p class="muted">Вставьте одноразовый токен из регистрации.</p>
+        <input id="token" placeholder="Токен" />
+        <button class="btn" type="button" onclick="confirmEmail()">Подтвердить</button>
+        <p><a href="login.html">Перейти ко входу</a></p>
+    </div>
+</div>
+
+<script>
+async function confirmEmail() {
+    const res = await fetch('/api/auth/confirm-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: document.getElementById('token').value.trim() })
+    });
+
+    if (res.ok) {
+        alert('Email подтверждён. Можно войти.');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    const err = await res.json().catch(() => ({}));
+    alert(err.message || 'Неверный или просроченный токен');
+}
+</script>
+</body>
+</html>
