@@ -18,19 +18,62 @@
 <div class="auth-wrap">
     <div class="card">
         <h2>Подтверждение email</h2>
-        <p class="muted">Вставьте одноразовый токен из регистрации.</p>
-        <input id="token" placeholder="Токен" />
-        <button class="btn" type="button" onclick="confirmEmail()">Подтвердить</button>
+        <p class="muted">Шаг 1: введите email и код из письма.</p>
+        <input id="email" type="email" placeholder="Email" />
+        <input id="code" placeholder="Код из письма" />
+        <button class="btn" type="button" onclick="verifyCode()">Проверить код</button>
+        <div id="captcha-block" style="display:none; margin-top:16px;">
+            <p class="muted">Шаг 2: введите текст с картинки.</p>
+            <img id="captcha-img" alt="captcha" style="max-width:100%; border-radius:8px; margin-bottom:10px;" />
+            <input id="captcha-answer" placeholder="Текст с картинки" />
+            <button class="btn" type="button" onclick="confirmEmail()">Подтвердить email</button>
+        </div>
         <p><a href="login.html">Перейти ко входу</a></p>
     </div>
 </div>
 
 <script>
+let currentCaptchaId = '';
+const savedEmail = localStorage.getItem('pendingEmailConfirmation');
+if (savedEmail) {
+    const emailInput = document.getElementById('email');
+    if (emailInput) emailInput.value = savedEmail;
+}
+
+async function verifyCode() {
+    const email = document.getElementById('email').value.trim();
+    const code = document.getElementById('code').value.trim();
+
+    const res = await fetch('/api/auth/verify-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code })
+    });
+
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Неверный или просроченный код');
+        return;
+    }
+
+    const data = await res.json();
+    currentCaptchaId = data.captchaId || '';
+    document.getElementById('captcha-img').src = data.captchaImageUrl || '';
+    document.getElementById('captcha-block').style.display = 'block';
+}
+
 async function confirmEmail() {
+    const email = document.getElementById('email').value.trim();
+    const captchaAnswer = document.getElementById('captcha-answer').value.trim();
+
     const res = await fetch('/api/auth/confirm-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: document.getElementById('token').value.trim() })
+        body: JSON.stringify({
+            email,
+            captchaId: currentCaptchaId,
+            captchaAnswer
+        })
     });
 
     if (res.ok) {

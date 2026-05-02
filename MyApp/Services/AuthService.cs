@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
@@ -13,46 +14,61 @@ public class AuthService
 {
     private readonly AppDbContext _context;
     private readonly IConfiguration _config;
+    private readonly IEmailSender _emailSender;
     private readonly PasswordHasher<User> _passwordHasher = new();
 
-    public AuthService(AppDbContext context, IConfiguration config)
+    public AuthService(AppDbContext context, IConfiguration config, IEmailSender emailSender)
     {
         _context = context;
         _config = config;
+        _emailSender = emailSender;
     }
 
-    /// <summary>Регистрация: JWT не выдаётся до подтверждения email.</summary>
+    /// <summary>Регистрация: отправка кода на email и ожидание подтверждения.</summary>
     public async Task<RegisterResult> Register(string email, string password)
     {
         var normalized = email.Trim().ToLowerInvariant();
-        if (await _context.Users.AnyAsync(u => u.Email == normalized))
+        var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        var expires = DateTime.UtcNow.AddMinutes(15);
+        var existing = await _context.Users.FirstOrDefaultAsync(u => u.Email == normalized);
+        if (existing is { IsEmailConfirmed: true })
             return RegisterResult.FailUserExists();
 
-        var token = Guid.NewGuid().ToString("N");
-        var expires = DateTime.UtcNow.AddHours(24);
-
-        var user = new User
+        if (existing is not null)
         {
-            Id = Guid.NewGuid(),
-            Email = normalized,
-            EmailConfirmationToken = token,
-            EmailConfirmationTokenExpiresAt = expires,
-            IsEmailConfirmed = false
-        };
-
-        user.PasswordHash = _passwordHasher.HashPassword(user, password);
-
-        _context.Users.Add(user);
-        _context.UserAccounts.Add(new UserAccount
+            existing.PasswordHash = _passwordHasher.HashPassword(existing, password);
+            existing.EmailConfirmationCode = code;
+            existing.EmailConfirmationCodeExpiresAt = expires;
+            existing.EmailCodeVerifiedAt = null;
+            await _context.SaveChangesAsync();
+        }
+        else
         {
-            UserId = user.Id,
-            BalanceRub = 0,
-            DebtRub = 0,
-            UpdatedAt = DateTime.UtcNow
-        });
-        await _context.SaveChangesAsync();
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = normalized,
+                EmailConfirmationCode = code,
+                EmailConfirmationCodeExpiresAt = expires,
+                EmailCodeVerifiedAt = null,
+                IsEmailConfirmed = false
+            };
 
-        return RegisterResult.Ok(token);
+            user.PasswordHash = _passwordHasher.HashPassword(user, password);
+
+            _context.Users.Add(user);
+            _context.UserAccounts.Add(new UserAccount
+            {
+                UserId = user.Id,
+                BalanceRub = 0,
+                DebtRub = 0,
+                UpdatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync();
+        }
+
+        await _emailSender.SendRegistrationCode(normalized, code);
+        return RegisterResult.Ok();
     }
 
     public async Task<LoginResult> Login(string email, string password)
@@ -72,21 +88,54 @@ public class AuthService
         return LoginResult.Ok(GenerateJwt(user));
     }
 
-    public async Task<bool> ConfirmEmail(string token)
+    public async Task<bool> VerifyEmailCode(string email, string code)
     {
-        if (string.IsNullOrWhiteSpace(token))
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code))
             return false;
 
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.EmailConfirmationToken == token.Trim());
+        var normalized = email.Trim().ToLowerInvariant();
+        var expectedCode = code.Trim();
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == normalized);
         if (user == null)
             return false;
 
-        if (user.EmailConfirmationTokenExpiresAt is { } exp && exp < DateTime.UtcNow)
+        if (user.IsEmailConfirmed)
+            return false;
+
+        if (user.EmailConfirmationCodeExpiresAt is { } exp && exp < DateTime.UtcNow)
+            return false;
+
+        if (!string.Equals(user.EmailConfirmationCode, expectedCode, StringComparison.Ordinal))
+            return false;
+
+        user.EmailCodeVerifiedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> ConfirmEmailAfterCaptcha(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+
+        var normalized = email.Trim().ToLowerInvariant();
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == normalized);
+        if (user == null)
+            return false;
+
+        if (user.IsEmailConfirmed)
+            return true;
+
+        if (user.EmailCodeVerifiedAt is not { } verifiedAt)
+            return false;
+
+        if (verifiedAt < DateTime.UtcNow.AddMinutes(-10))
             return false;
 
         user.IsEmailConfirmed = true;
-        user.EmailConfirmationToken = null;
-        user.EmailConfirmationTokenExpiresAt = null;
+        user.EmailConfirmationCode = null;
+        user.EmailConfirmationCodeExpiresAt = null;
+        user.EmailCodeVerifiedAt = null;
 
         await _context.SaveChangesAsync();
         return true;
@@ -135,10 +184,9 @@ public class AuthService
 public sealed class RegisterResult
 {
     public bool UserExists { get; init; }
-    public string? ConfirmationToken { get; init; }
 
     public static RegisterResult FailUserExists() => new() { UserExists = true };
-    public static RegisterResult Ok(string confirmationToken) => new() { ConfirmationToken = confirmationToken };
+    public static RegisterResult Ok() => new();
 }
 
 public sealed class LoginResult

@@ -26,8 +26,9 @@ public class AppDbContext : DbContext
             entity.Property(u => u.Email).HasColumnName("Email");
             entity.Property(u => u.PasswordHash).HasColumnName("PasswordHash");
             entity.Property(u => u.IsEmailConfirmed).HasColumnName("IsEmailConfirmed");
-            entity.Property(u => u.EmailConfirmationToken).HasColumnName("EmailConfirmationToken");
-            entity.Property(u => u.EmailConfirmationTokenExpiresAt).HasColumnName("EmailConfirmationTokenExpiresAt");
+            entity.Property(u => u.EmailConfirmationCode).HasColumnName("EmailConfirmationCode");
+            entity.Property(u => u.EmailConfirmationCodeExpiresAt).HasColumnName("EmailConfirmationCodeExpiresAt");
+            entity.Property(u => u.EmailCodeVerifiedAt).HasColumnName("EmailCodeVerifiedAt");
             entity.Property(u => u.CreatedAt).HasColumnName("CreatedAt");
 
             entity.HasIndex(u => u.Email).IsUnique();

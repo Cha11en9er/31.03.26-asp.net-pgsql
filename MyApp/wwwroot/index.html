@@ -12,10 +12,7 @@
             <div class="brand">Портал клиентов ТГК-2</div>
             <div class="brand-sub">Теплоснабжение, договоры, сервисы для бизнеса</div>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <a class="btn btn-light" href="profile.html">Профиль</a>
-            <a class="btn btn-light" href="login.html">Вход</a>
-        </div>
+        <div id="authActions" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
     </div>
 </header>
 
@@ -119,7 +116,29 @@ function escapeHtml(s) {
 }
 
 async function init() {
+    renderAuthActions();
     await Promise.all([loadProducts(), loadNews()]);
+}
+
+function renderAuthActions() {
+    const wrap = document.getElementById('authActions');
+    const token = localStorage.getItem('token');
+
+    if (!token) {
+        wrap.innerHTML = '<a class="btn btn-light" href="login.html">Авторизация</a>';
+        return;
+    }
+
+    wrap.innerHTML = `
+        <a class="btn btn-light" href="profile.html">Профиль</a>
+        <button class="btn btn-light" id="logoutBtn" type="button">Выйти</button>
+    `;
+
+    const logoutBtn = document.getElementById('logoutBtn');
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('token');
+        window.location.href = 'index.html';
+    });
 }
 
 init().catch(() => {});

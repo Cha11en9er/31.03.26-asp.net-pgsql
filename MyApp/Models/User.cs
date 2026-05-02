@@ -15,11 +15,12 @@ public class User
 
     public bool IsEmailConfirmed { get; set; }
 
-    /// <summary>Одноразовый токен подтверждения email (до подтверждения).</summary>
-    [MaxLength(128)]
-    public string? EmailConfirmationToken { get; set; }
+    /// <summary>Код подтверждения email (6 цифр).</summary>
+    [MaxLength(16)]
+    public string? EmailConfirmationCode { get; set; }
 
-    public DateTime? EmailConfirmationTokenExpiresAt { get; set; }
+    public DateTime? EmailConfirmationCodeExpiresAt { get; set; }
+    public DateTime? EmailCodeVerifiedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

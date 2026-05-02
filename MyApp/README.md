@@ -29,6 +29,14 @@ dotnet --info
 1. Откройте файл `MyApp/.env` и убедитесь, что там совпадают параметры вашей БД:
    - `ConnectionStrings__DefaultConnection`
    - `Jwt__Key`, `Jwt__Issuer`, `Jwt__Audience`
+   - SMTP для отправки кода регистрации:
+     - `Smtp__Host`
+     - `Smtp__Port` (обычно `587`)
+     - `Smtp__EnableSsl` (`true`/`false`)
+     - `Smtp__Username`
+     - `Smtp__Password`
+     - `Smtp__FromEmail`
+     - `Smtp__FromName`
 2. Убедитесь, что в PostgreSQL есть:
    - БД `tgk_bd`
    - пользователь `tgk2_user` (пароль `tgk2_password`)
@@ -61,15 +69,19 @@ dotnet run
 1. Регистрация:
    - `POST /api/auth/register`
    - тело: `{ "email": "...", "password": "..." }`
-   - ответ вернёт `confirmationToken` (в учебном режиме без отправки email).
-2. Подтверждение email:
+   - код подтверждения отправляется на email.
+2. Проверка кода из email:
+   - `POST /api/auth/verify-email-code`
+   - тело: `{ "email": "...", "code": "123456" }`
+   - ответ: `captchaId` и `captchaImageUrl`.
+3. Подтверждение email капчей:
    - `POST /api/auth/confirm-email`
-   - тело: `{ "token": "..." }`
-3. Логин:
+   - тело: `{ "email": "...", "captchaId": "...", "captchaAnswer": "..." }`
+4. Логин:
    - `POST /api/auth/login`
    - тело: `{ "email": "...", "password": "..." }`
    - ответ вернёт `token` (JWT).
-4. Новости:
+5. Новости:
    - `GET /api/news`
    - нужен заголовок `Authorization: Bearer <token>`
 
@@ -94,3 +106,46 @@ dotnet run
 
 Если приложение всё равно падает — пришлите текст ошибки из консоли (самое важное: первая ошибка/stack trace).
 
+## 7) Обновление БД и SMTP (пошагово)
+
+### Шаг 1. Обновите таблицу `Users` в PostgreSQL
+
+Выполните в DBeaver/psql:
+
+```sql
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailConfirmationCode" character varying(16) NULL;
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailConfirmationCodeExpiresAt" timestamp with time zone NULL;
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailCodeVerifiedAt" timestamp with time zone NULL;
+ALTER TABLE "Users" DROP COLUMN IF EXISTS "EmailConfirmationToken";
+ALTER TABLE "Users" DROP COLUMN IF EXISTS "EmailConfirmationTokenExpiresAt";
+```
+
+### Шаг 2. Настройте SMTP в `MyApp/.env`
+
+Пример для Gmail:
+
+```env
+Smtp__Host=smtp.gmail.com
+Smtp__Port=587
+Smtp__EnableSsl=true
+Smtp__Username=your_sender@gmail.com
+Smtp__Password=your_app_password
+Smtp__FromEmail=your_sender@gmail.com
+Smtp__FromName=TGK-2 Portal
+```
+
+Где взять `Smtp__Password` для Gmail:
+- включите 2FA в Google-аккаунте;
+- создайте App Password на странице [Google App Passwords](https://myaccount.google.com/apppasswords);
+- вставьте выданный 16-символьный пароль в `Smtp__Password`.
+
+### Шаг 3. Перезапустите приложение
+
+После изменения `.env` обязательно перезапустите `dotnet run`, иначе новые переменные не подхватятся.
+
+### Шаг 4. Если при регистрации видите `500`
+
+- проверьте сообщение ошибки в ответе API: теперь там показывается причина SMTP;
+- проверьте, что `Smtp__Username` и `Smtp__FromEmail` совпадают и существуют;
+- убедитесь, что используется App Password, а не обычный пароль Gmail;
+- не нажимайте кнопку регистрации несколько раз подряд (на странице добавлена блокировка повторного клика).

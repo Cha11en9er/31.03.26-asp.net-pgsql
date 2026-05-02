@@ -18,14 +18,13 @@
 <div class="auth-wrap">
     <div class="card">
         <h2>Регистрация</h2>
-        <p class="muted">После регистрации подтвердите email одноразовым токеном.</p>
+        <p class="muted">После регистрации получите код на почту и подтвердите email.</p>
         <input id="email" type="email" autocomplete="username" placeholder="Email" />
         <input id="password" type="password" autocomplete="new-password" placeholder="Пароль" />
-        <button class="btn" type="button" onclick="register()">Зарегистрироваться</button>
+        <button class="btn" id="registerBtn" type="button" onclick="register()">Зарегистрироваться</button>
         <p><a href="login.html">Уже есть аккаунт? Войти</a></p>
         <div id="after" style="display:none;">
-            <p class="muted">Скопируйте токен и подтвердите email на следующей странице.</p>
-            <div class="token-box" id="tok"></div>
+            <p class="muted" id="mailHint">Код отправлен на email. Перейдите на страницу подтверждения.</p>
             <p><a href="confirm.html">Перейти к подтверждению email</a></p>
         </div>
     </div>
@@ -33,28 +32,42 @@
 
 <script>
 async function register() {
-    const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            email: document.getElementById('email').value,
-            password: document.getElementById('password').value
-        })
-    });
+    const btn = document.getElementById('registerBtn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const initialText = btn.textContent;
+    btn.textContent = 'Отправка...';
 
-    if (res.ok) {
-        const data = await res.json();
-        document.getElementById('after').style.display = 'block';
-        document.getElementById('tok').textContent = data.confirmationToken || '';
-        return;
+    try {
+        const email = document.getElementById('email').value.trim();
+        const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email,
+                password: document.getElementById('password').value
+            })
+        });
+
+        if (res.ok) {
+            await res.json().catch(() => ({}));
+            localStorage.setItem('pendingEmailConfirmation', email);
+            document.getElementById('mailHint').textContent = `Вам отправлено письмо на ${email}. Введите код из письма на следующем шаге.`;
+            document.getElementById('after').style.display = 'block';
+            return;
+        }
+
+        if (res.status === 409) {
+            alert('Пользователь уже существует');
+            return;
+        }
+
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Ошибка регистрации');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = initialText;
     }
-
-    if (res.status === 409) {
-        alert('Пользователь уже существует');
-        return;
-    }
-
-    alert('Ошибка регистрации');
 }
 </script>
 </body>

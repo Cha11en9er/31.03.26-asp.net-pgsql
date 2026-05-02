@@ -49,6 +49,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<CaptchaService>();
 
 var jwtKeyString = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKeyString))
