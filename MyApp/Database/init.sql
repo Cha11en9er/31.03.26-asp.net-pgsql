@@ -125,3 +125,13 @@ INSERT INTO "News" ("Title", "Content")
 SELECT 'План профилактических работ на осенний период',
        'Сформирован график плановых отключений и профилактики оборудования. Рекомендуем заранее проверить активные договоры.'
 WHERE NOT EXISTS (SELECT 1 FROM "News" WHERE "Title" = 'План профилактических работ на осенний период');
+
+
+--------------------------------------------
+--добавление новых полей в таблицу Users
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailConfirmationCode" character varying(16) NULL;
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailConfirmationCodeExpiresAt" timestamp with time zone NULL;
+ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "EmailCodeVerifiedAt" timestamp with time zone NULL;
+
+ALTER TABLE "Users" DROP COLUMN IF EXISTS "EmailConfirmationToken";
+ALTER TABLE "Users" DROP COLUMN IF EXISTS "EmailConfirmationTokenExpiresAt";
