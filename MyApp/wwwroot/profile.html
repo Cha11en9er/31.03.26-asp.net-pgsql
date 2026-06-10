@@ -58,6 +58,9 @@
         <div class="panel">
             <h2>Финансовые движения</h2>
             <div id="transactions">Загрузка...</div>
+            <div style="margin-top:16px;">
+                <button class="btn" type="button" id="sendReceiptBtn" onclick="sendReceipt()">Отправить квитанцию на email</button>
+            </div>
         </div>
     </section>
 
@@ -189,6 +192,22 @@ async function loadProfile() {
 
     renderServices(services);
     renderTransactions(transactions);
+}
+
+async function sendReceipt() {
+    const btn = document.getElementById('sendReceiptBtn');
+    btn.disabled = true;
+    try {
+        const res = await api('/api/profile/send-receipt', { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.message || 'Не удалось отправить квитанцию.');
+            return;
+        }
+        alert(data.message || 'Квитанция отправлена.');
+    } finally {
+        btn.disabled = false;
+    }
 }
 
 async function topUp() {

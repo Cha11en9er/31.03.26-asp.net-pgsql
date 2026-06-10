@@ -13,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Подхватываем значения из файла .env (для учебного проекта: без SMTP и без секретов в appsettings.json)
 var envPath = Path.Combine(builder.Environment.ContentRootPath, ".env");
+if (!File.Exists(envPath))
+    envPath = Path.Combine(AppContext.BaseDirectory, ".env");
 if (File.Exists(envPath))
 {
     var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);

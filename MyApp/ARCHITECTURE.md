@@ -4,26 +4,75 @@
 
 ## 1. Технологический стек
 
-- Backend: ASP.NET Core Web API (`net8.0`)
-- База данных: PostgreSQL
-- ORM: Entity Framework Core + `Npgsql`
-- Аутентификация: JWT Bearer
-- Frontend: нативные `HTML/CSS/JS` в `wwwroot`
-- API-документация: Swagger
+Один сервер на **.NET 8**: отдаёт API, статические страницы и Swagger. React, Node.js и npm **не используются**.
 
-Ключевые NuGet-пакеты:
-- `Microsoft.AspNetCore.Authentication.JwtBearer`
-- `Npgsql.EntityFrameworkCore.PostgreSQL`
-- `Swashbuckle.AspNetCore`
+### Backend (C# / ASP.NET Core)
+
+| Библиотека / технология | Где используется | Зачем |
+|-------------------------|------------------|-------|
+| **ASP.NET Core** (`Microsoft.NET.Sdk.Web`) | `Program.cs`, `Controllers/*` | HTTP-сервер и REST API |
+| **JwtBearer** | `Program.cs` | Проверяет JWT в заголовке `Authorization` |
+| **System.IdentityModel.Tokens.Jwt** | `AuthService.cs` | Создаёт JWT при логине |
+| **Microsoft.IdentityModel.Tokens** | `Program.cs`, `AuthService.cs` | Ключ и подпись токена |
+| **PasswordHasher** (встроен в ASP.NET) | `AuthService.cs` | Хеширует и проверяет пароль |
+| **Entity Framework Core** | `AppDbContext.cs`, контроллеры, `AuthService.cs` | Работа с БД через C#-код |
+| **Npgsql** (пакет `Npgsql.EntityFrameworkCore.PostgreSQL`) | `Program.cs` (`UseNpgsql`) | Подключение к PostgreSQL |
+| **Swashbuckle** | `Program.cs` | Swagger UI (`/swagger`) |
+| **System.Net.Mail** | `EmailSender.cs` | Отправка кода на email через SMTP |
+| **System.Security.Cryptography** | `AuthService.cs`, `CaptchaService.cs` | Случайный код и выбор картинки капчи |
+
+Свой код (не библиотеки):
+
+| Файл | Зачем |
+|------|-------|
+| `AuthService.cs` | Регистрация, логин, JWT |
+| `EmailSender.cs` | Обёртка над SMTP |
+| `CaptchaService.cs` | Капча по картинкам из `captcha_pic/` |
+
+NuGet-пакеты перечислены в `MyApp.csproj` (4 штуки: JwtBearer, Npgsql, EF Design, Swashbuckle).
+
+### База данных
+
+| Что | Где | Зачем |
+|-----|-----|-------|
+| **PostgreSQL** | внешний сервер | Хранит пользователей, услуги, договоры, транзакции |
+| **AppDbContext** | `Data/AppDbContext.cs` | Доступ к таблицам из C# |
+| **Models/** | `Models/*.cs` | C#-классы таблиц (`User`, `Product`, …) |
+| **init.sql** | `Database/init.sql` | Создание таблиц и начальные данные |
+| Строка подключения | `.env` → `Program.cs` | Логин/пароль к БД |
+
+Цепочка: `Controller` → `AppDbContext` → `PostgreSQL`.
+
+### Frontend (браузер)
+
+| Технология | Где | Зачем |
+|------------|-----|-------|
+| **HTML** | `wwwroot/*.html` | Страницы: вход, регистрация, главная, профиль |
+| **CSS** | `wwwroot/styles.css` | Внешний вид |
+| **JavaScript** | `<script>` в html-файлах | Логика форм и запросов к API |
+| **fetch** | все страницы с API | Вызовы `/api/...` |
+| **localStorage** | `login.html`, `index.html`, `profile.html` | Хранит JWT после входа |
+
+Фреймворков (React, Vue) нет — только чистый HTML/CSS/JS.
+
+### Конфигурация
+
+| Файл | Что там |
+|------|---------|
+| `.env` | Пароль БД, ключ JWT, настройки SMTP |
+| `appsettings.json` | Issuer/Audience JWT, логи |
+| `launchSettings.json` | URL при `dotnet run` |
 
 ## 2. Общая структура проекта
 
 - `Program.cs` - точка входа, DI, конфигурация, middleware pipeline.
 - `Data/AppDbContext.cs` - EF Core контекст и mapping сущностей.
 - `Models/*` - доменные модели (`User`, `Product`, `Contract`, и т.д.).
-- `Services/AuthService.cs` - основная логика auth.
+- `Services/AuthService.cs` - регистрация, код email, логин, JWT.
+- `Services/EmailSender.cs` - отправка кода через SMTP (`SmtpEmailSender`).
+- `Services/CaptchaService.cs` - капча по изображениям из `captcha_pic/`.
 - `Controllers/*` - HTTP API:
-  - `AuthController` (`/api/auth/*`)
+  - `AuthController` (`/api/auth/*`, включая `captcha/{id}`)
   - `CabinetController` (`/api/profile/*`, защищен `[Authorize]`)
   - `ProductsController` (`/api/products`)
   - `NewsController` (`/api/news`)
@@ -38,9 +87,8 @@
 
 В `.env` используются ключи в формате:
 - `ConnectionStrings__DefaultConnection`
-- `Jwt__Key`
-- `Jwt__Issuer`
-- `Jwt__Audience`
+- `Jwt__Key`, `Jwt__Issuer`, `Jwt__Audience`
+- `Smtp__Host`, `Smtp__Port`, `Smtp__EnableSsl`, `Smtp__Username`, `Smtp__Password`, `Smtp__FromEmail`, `Smtp__FromName`
 
 В коде `__` преобразуется в `:`, поэтому приложение видит стандартные секции конфигурации ASP.NET (`ConnectionStrings:DefaultConnection`, `Jwt:Key` и т.д.).
 
@@ -61,7 +109,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 Основные таблицы (см. `Database/init.sql`):
 
 - `Users`
-  - хранит учетную запись: email, `PasswordHash`, флаг подтверждения email, токен подтверждения и срок его действия.
+  - хранит учетную запись: email, `PasswordHash`, флаг подтверждения email, 6-значный `EmailConfirmationCode`, срок кода и метку `EmailCodeVerifiedAt` (после проверки кода из письма).
 - `UserAccounts`
   - финансовая часть пользователя: `BalanceRub`, `DebtRub`, `UpdatedAt`.
   - связь 1:1 с `Users` по `UserId`.
@@ -98,7 +146,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 ### 4.2 Контроллеры и ответственность
 
 - `AuthController`
-  - регистрация, подтверждение email, логин.
+  - регистрация, проверка кода из email, капча, финальное подтверждение email, логин.
 - `ProductsController`
   - публичная выдача каталога услуг.
 - `NewsController`
@@ -119,40 +167,42 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 - `Email`
 - `PasswordHash` (пароль хранится только в виде хеша)
 - `IsEmailConfirmed`
-- `EmailConfirmationToken`
-- `EmailConfirmationTokenExpiresAt`
+- `EmailConfirmationCode` / `EmailConfirmationCodeExpiresAt` (код из письма, TTL 15 минут)
+- `EmailCodeVerifiedAt` (код из email принят, ожидается капча)
 
 ### 5.2 Регистрация (`POST /api/auth/register`)
 
-Поток в `AuthService.Register(...)`:
+Поток в `AuthService.Register(...)` + `SmtpEmailSender`:
 
 1. Нормализация email: `Trim().ToLowerInvariant()`.
-2. Проверка уникальности пользователя по email.
-3. Генерация одноразового токена подтверждения (`Guid.NewGuid().ToString("N")`).
-4. Установка TTL токена (24 часа).
-5. Хеширование пароля через `PasswordHasher<User>.HashPassword(...)`.
-6. Создание пользователя в `Users`.
-7. Одновременно создается запись `UserAccount` с нулевым балансом/долгом.
-8. `SaveChangesAsync()`.
-9. В ответ возвращается `confirmationToken` (в учебной версии показывается напрямую, без SMTP-отправки письма).
+2. Если пользователь уже подтверждён — `409 Conflict`.
+3. Генерация 6-значного кода (`RandomNumberGenerator`, TTL 15 минут).
+4. Хеширование пароля через `PasswordHasher<User>.HashPassword(...)`.
+5. Создание или обновление записи в `Users` + при первой регистрации — `UserAccount` с нулевым балансом.
+6. `SaveChangesAsync()`.
+7. Отправка кода на email через `System.Net.Mail` / SMTP (`Smtp:Host`, `Smtp:Username`, … из `.env`).
 
 Что важно проговорить на защите:
 - plaintext-пароль в БД не хранится;
-- до подтверждения email вход запрещен.
+- до подтверждения email вход запрещен;
+- для отправки письма нужна настройка SMTP в `.env`.
 
-### 5.3 Подтверждение email (`POST /api/auth/confirm-email`)
+### 5.3 Подтверждение email: код + капча (два шага)
 
-Поток в `AuthService.ConfirmEmail(token)`:
+**Шаг 1 — код из письма** (`POST /api/auth/verify-email-code`):
 
-1. Поиск пользователя по токену.
-2. Проверка срока действия токена.
-3. Если токен валиден:
-   - `IsEmailConfirmed = true`;
-   - `EmailConfirmationToken = null`;
-   - `EmailConfirmationTokenExpiresAt = null`.
-4. `SaveChangesAsync()`.
+1. `AuthService.VerifyEmailCode(email, code)` ищет пользователя и сверяет код и срок.
+2. При успехе выставляется `EmailCodeVerifiedAt = UtcNow`.
+3. `CaptchaService.CreateChallenge()` выбирает случайное изображение из `captcha_pic/`; ответ — имя файла без расширения.
+4. Клиент получает `captchaId` и URL картинки `GET /api/auth/captcha/{captchaId}`.
 
-Если токен неверный/просроченный -> 400 BadRequest.
+**Шаг 2 — капча** (`POST /api/auth/confirm-email`):
+
+1. `CaptchaService.VerifyAndConsume(captchaId, answer)` — одноразовая проверка (challenge удаляется из памяти).
+2. `AuthService.ConfirmEmailAfterCaptcha(email)` проверяет, что код из письма был принят не позднее 10 минут назад.
+3. `IsEmailConfirmed = true`, поля кода обнуляются.
+
+Если код/капча неверны или просрочены → `400 BadRequest`.
 
 ### 5.4 Логин (`POST /api/auth/login`)
 
@@ -208,9 +258,10 @@ var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
 - `register.html`
   - отправляет `POST /api/auth/register`;
-  - показывает `confirmationToken`.
+  - сообщает, что код ушёл на email.
 - `confirm.html`
-  - отправляет `POST /api/auth/confirm-email` с токеном.
+  - шаг 1: `POST /api/auth/verify-email-code` (email + код из письма);
+  - шаг 2: показ капчи и `POST /api/auth/confirm-email` (email + `captchaId` + ответ).
 - `login.html`
   - отправляет `POST /api/auth/login`;
   - сохраняет полученный JWT в `localStorage` (`token`).
@@ -239,20 +290,3 @@ var value = User.FindFirstValue(ClaimTypes.NameIdentifier);
      - сумма сначала гасит долг;
      - остаток зачисляется в баланс;
      - пишется операция `Пополнение`.
-
-## 8. Что сказать на защите (краткий порядок рассказа)
-
-1. **Старт приложения**: `Program.cs` (конфиг из `.env`, DI, EF Core, JWT middleware).
-2. **База данных**: `AppDbContext` + таблицы (`Users`, `UserAccounts`, `Contracts`, `BalanceTransactions`, `Products`, `News`).
-3. **Регистрация**: создание пользователя, хеш пароля, выдача токена подтверждения.
-4. **Подтверждение email**: валидация токена и активация учетной записи.
-5. **Логин и JWT**: валидация пароля, выпуск токена, claims внутри токена.
-6. **Авторизация API**: `[Authorize]`, `Bearer` заголовок, извлечение `userId` из claims.
-7. **Связка с фронтом**: `localStorage` токена, защищенные запросы из `profile.html`/`index.html`.
-
-## 9. Ограничения текущей учебной реализации
-
-- Подтверждение email сейчас учебное: токен возвращается в API-ответе, без реальной отправки письма.
-- Регистрация не использует дополнительные политики сложности пароля (их можно добавить отдельной валидацией).
-- Хранение JWT в `localStorage` удобно для демо, но для production обычно рассматривают более строгие подходы (например, httpOnly cookie + CSRF-защита в соответствующей архитектуре).
-

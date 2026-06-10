@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using MyApp.Data;
 using MyApp.DTOs;
 using MyApp.Models;
+using MyApp.Services;
 
 namespace MyApp.Controllers;
 
@@ -14,10 +15,14 @@ namespace MyApp.Controllers;
 public class CabinetController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IEmailSender _emailSender;
+    private readonly ILogger<CabinetController> _logger;
 
-    public CabinetController(AppDbContext context)
+    public CabinetController(AppDbContext context, IEmailSender emailSender, ILogger<CabinetController> logger)
     {
         _context = context;
+        _emailSender = emailSender;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -189,6 +194,56 @@ public class CabinetController : ControllerBase
             account.BalanceRub,
             account.DebtRub
         });
+    }
+
+    [HttpPost("send-receipt")]
+    public async Task<IActionResult> SendReceipt()
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return Unauthorized();
+
+        var account = await _context.UserAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.UserId == userId)
+            ?? new UserAccount { UserId = userId.Value, BalanceRub = 0, DebtRub = 0 };
+
+        var contracts = await _context.Contracts
+            .AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .OrderByDescending(c => c.CreatedAt)
+            .Select(c => new ReceiptServiceLine(
+                c.ContractNumber,
+                c.Product.Name,
+                c.AmountRub))
+            .ToListAsync();
+
+        var paidRub = await _context.BalanceTransactions
+            .AsNoTracking()
+            .Where(t => t.UserId == userId && t.Type == "Пополнение")
+            .SumAsync(t => t.AmountRub);
+
+        var receipt = new ReceiptEmailData
+        {
+            Services = contracts,
+            TotalServicesRub = contracts.Sum(c => c.AmountRub),
+            PaidRub = paidRub,
+            DebtRub = account.DebtRub,
+            BalanceRub = account.BalanceRub
+        };
+
+        try
+        {
+            await _emailSender.SendReceipt(user.Email, receipt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Receipt email send failed for {Email}", user.Email);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { message = "Не удалось отправить квитанцию. " + ex.Message });
+        }
+
+        return Ok(new { message = $"Квитанция отправлена на {user.Email}." });
     }
 
     private Guid? GetUserId()
