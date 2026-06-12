@@ -23,4 +23,10 @@ public class User
     public DateTime? EmailCodeVerifiedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Physical — физическое лицо, Legal — юридическое лицо.</summary>
+    [MaxLength(20)]
+    public string AccountType { get; set; } = "Physical";
+
+    public LegalEntityProfile? LegalEntityProfile { get; set; }
 }

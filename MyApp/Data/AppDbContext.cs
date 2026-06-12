@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<UserAccount> UserAccounts => Set<UserAccount>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<BalanceTransaction> BalanceTransactions => Set<BalanceTransaction>();
+    public DbSet<LegalEntityProfile> LegalEntityProfiles => Set<LegalEntityProfile>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options) { }
@@ -30,8 +31,32 @@ public class AppDbContext : DbContext
             entity.Property(u => u.EmailConfirmationCodeExpiresAt).HasColumnName("EmailConfirmationCodeExpiresAt");
             entity.Property(u => u.EmailCodeVerifiedAt).HasColumnName("EmailCodeVerifiedAt");
             entity.Property(u => u.CreatedAt).HasColumnName("CreatedAt");
+            entity.Property(u => u.AccountType).HasColumnName("AccountType").HasMaxLength(20);
 
             entity.HasIndex(u => u.Email).IsUnique();
+
+            entity.HasOne(u => u.LegalEntityProfile)
+                .WithOne(p => p.User)
+                .HasForeignKey<LegalEntityProfile>(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LegalEntityProfile>(entity =>
+        {
+            entity.ToTable("LegalEntityProfiles");
+            entity.HasKey(p => p.UserId);
+
+            entity.Property(p => p.UserId).HasColumnName("UserId");
+            entity.Property(p => p.CompanyFullName).HasColumnName("CompanyFullName").HasMaxLength(500);
+            entity.Property(p => p.CompanyShortName).HasColumnName("CompanyShortName").HasMaxLength(160);
+            entity.Property(p => p.Inn).HasColumnName("Inn").HasMaxLength(10);
+            entity.Property(p => p.Ogrn).HasColumnName("Ogrn").HasMaxLength(13);
+            entity.Property(p => p.Kpp).HasColumnName("Kpp").HasMaxLength(9);
+            entity.Property(p => p.DirectorFullName).HasColumnName("DirectorFullName").HasMaxLength(200);
+            entity.Property(p => p.DirectorBirthDate).HasColumnName("DirectorBirthDate");
+            entity.Property(p => p.DocumentFileName).HasColumnName("DocumentFileName").HasMaxLength(255);
+            entity.Property(p => p.DocumentContent).HasColumnName("DocumentContent");
+            entity.Property(p => p.VerifiedAt).HasColumnName("VerifiedAt");
         });
 
         modelBuilder.Entity<News>(entity =>

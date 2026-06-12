@@ -13,6 +13,7 @@
             <div class="brand-sub">Личный кабинет: финансы, услуги, договоры</div>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-light" type="button" id="oldVersionBtn">Старая версия</button>
             <a class="btn btn-light" href="index.html">Главная</a>
             <button class="btn btn-light" id="logoutBtn" type="button">Выйти</button>
         </div>
@@ -23,12 +24,13 @@
     <section class="hero">
         <h1>Профиль клиента</h1>
         <p>Управляйте балансом, контролируйте задолженность и смотрите историю финансовых операций.</p>
+        <p style="margin-top:10px;"><span class="badge" id="accountTypeBadge">Физическое лицо</span></p>
     </section>
 
     <section class="grid grid-4" style="margin-bottom:16px;">
         <div class="stat">
             <div class="stat-title">Email</div>
-            <div class="stat-value" id="userEmail">—</div>
+            <div class="stat-value" id="userEmail" style="font-size:1rem;">—</div>
         </div>
         <div class="stat">
             <div class="stat-title">Баланс</div>
@@ -42,6 +44,11 @@
             <div class="stat-title">Подключенные услуги</div>
             <div class="stat-value" id="servicesCount">0</div>
         </div>
+    </section>
+
+    <section class="panel" id="legalRequisitesPanel" style="margin-bottom:16px; display:none;">
+        <h2>Реквизиты организации</h2>
+        <div class="requisites-grid" id="legalRequisites"></div>
     </section>
 
     <section class="grid grid-2">
@@ -58,7 +65,11 @@
         <div class="panel">
             <h2>Финансовые движения</h2>
             <div id="transactions">Загрузка...</div>
-            <div style="margin-top:16px;">
+            <div class="receipt-actions" style="margin-top:16px;">
+                <label class="checkbox-row" style="margin:0;">
+                    <input type="checkbox" id="receiptConsent" checked />
+                    <span>Получать квитанцию на email</span>
+                </label>
                 <button class="btn" type="button" id="sendReceiptBtn" onclick="sendReceipt()">Отправить квитанцию на email</button>
             </div>
         </div>
@@ -66,6 +77,7 @@
 
     <section class="panel" style="margin-top:16px;">
         <h2>Мои договоры и услуги</h2>
+        <p class="muted">Оплата по договорам и документам осуществляется через банковский перевод по реквизитам, указанным в счёте.</p>
         <div id="servicesWrap">Загрузка...</div>
     </section>
 </main>
@@ -86,6 +98,10 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     window.location.href = 'login.html';
 });
 
+document.getElementById('oldVersionBtn').addEventListener('click', () => {
+    alert('Переход на предыдущую версию портала.');
+});
+
 document.getElementById('plusBtn').addEventListener('click', () => {
     document.getElementById('topUpAmount').focus();
 });
@@ -101,14 +117,11 @@ function escapeHtml(s) {
 }
 
 async function api(path, options = {}) {
-    const res = await fetch(path, {
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token,
-            ...(options.headers || {})
-        }
-    });
+    const headers = { 'Authorization': 'Bearer ' + token, ...(options.headers || {}) };
+    if (!(options.body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+    }
+    const res = await fetch(path, { ...options, headers });
     if (res.status === 401 || res.status === 403) {
         localStorage.removeItem('token');
         window.location.href = 'login.html';
@@ -177,6 +190,32 @@ function renderTransactions(items) {
     `;
 }
 
+function renderLegalRequisites(legal) {
+    const panel = document.getElementById('legalRequisitesPanel');
+    const wrap = document.getElementById('legalRequisites');
+    if (!legal) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = 'block';
+    const items = [
+        ['Полное наименование', legal.companyFullName],
+        ['Сокращённое наименование', legal.companyShortName],
+        ['ИНН', legal.inn],
+        ['ОГРН', legal.ogrn],
+        ['КПП', legal.kpp],
+        ['Руководитель', legal.directorFullName],
+        ['Дата рождения руководителя', new Date(legal.directorBirthDate).toLocaleDateString('ru-RU')],
+        ['Документ', legal.documentFileName]
+    ];
+    wrap.innerHTML = items.map(([label, value]) => `
+        <div class="requisite-item">
+            <div class="requisite-label">${escapeHtml(label)}</div>
+            <div class="requisite-value">${escapeHtml(value)}</div>
+        </div>
+    `).join('');
+}
+
 async function loadProfile() {
     const res = await api('/api/profile');
     const data = await res.json();
@@ -190,6 +229,12 @@ async function loadProfile() {
     document.getElementById('debtRub').textContent = money(user.debtRub);
     document.getElementById('servicesCount').textContent = String(services.length);
 
+    const badge = document.getElementById('accountTypeBadge');
+    const isLegal = user.accountType === 'Legal';
+    badge.textContent = user.accountTypeLabel || (isLegal ? 'Юридическое лицо' : 'Физическое лицо');
+    badge.className = isLegal ? 'badge badge-legal' : 'badge';
+
+    renderLegalRequisites(isLegal ? data.legalEntity : null);
     renderServices(services);
     renderTransactions(transactions);
 }
@@ -234,4 +279,3 @@ loadProfile().catch(() => {});
 </script>
 </body>
 </html>
-

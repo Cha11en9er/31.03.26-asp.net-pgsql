@@ -67,18 +67,107 @@ public class CabinetController : ControllerBase
             })
             .ToListAsync();
 
+        var legal = await _context.LegalEntityProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == userId);
+
         return Ok(new
         {
             user = new
             {
                 user.Email,
                 user.IsEmailConfirmed,
+                user.AccountType,
+                accountTypeLabel = user.AccountType == "Legal" ? "Юридическое лицо" : "Физическое лицо",
                 account.BalanceRub,
                 account.DebtRub,
                 account.UpdatedAt
             },
+            legalEntity = legal == null ? null : new
+            {
+                legal.CompanyFullName,
+                legal.CompanyShortName,
+                legal.Inn,
+                legal.Ogrn,
+                legal.Kpp,
+                legal.DirectorFullName,
+                legal.DirectorBirthDate,
+                legal.DocumentFileName,
+                legal.VerifiedAt
+            },
             services = contracts,
             transactions
+        });
+    }
+
+    [HttpPost("legal-verification")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
+    public async Task<IActionResult> SubmitLegalVerification([FromForm] LegalVerificationFormDto dto, IFormFile? document)
+    {
+        var userId = GetUserId();
+        if (userId == null) return Unauthorized();
+
+        if (document == null || document.Length == 0)
+            return BadRequest(new { message = "Загрузите PDF-документ, подтверждающий статус юридического лица." });
+
+        var ext = Path.GetExtension(document.FileName).ToLowerInvariant();
+        if (ext != ".pdf")
+            return BadRequest(new { message = "Допустим только формат PDF." });
+
+        if (document.Length > 5 * 1024 * 1024)
+            return BadRequest(new { message = "Размер файла не должен превышать 5 МБ." });
+
+        var inn = (dto.Inn ?? string.Empty).Trim();
+        var ogrn = (dto.Ogrn ?? string.Empty).Trim();
+        var kpp = (dto.Kpp ?? string.Empty).Trim();
+
+        if (inn.Length != 10 || !inn.All(char.IsDigit))
+            return BadRequest(new { message = "ИНН должен содержать ровно 10 цифр." });
+        if (ogrn.Length != 13 || !ogrn.All(char.IsDigit))
+            return BadRequest(new { message = "ОГРН должен содержать ровно 13 цифр." });
+        if (kpp.Length != 9 || !kpp.All(char.IsDigit))
+            return BadRequest(new { message = "КПП должен содержать ровно 9 цифр." });
+
+        if (string.IsNullOrWhiteSpace(dto.CompanyFullName) ||
+            string.IsNullOrWhiteSpace(dto.CompanyShortName) ||
+            string.IsNullOrWhiteSpace(dto.DirectorFullName) ||
+            dto.DirectorBirthDate == default)
+        {
+            return BadRequest(new { message = "Заполните все поля реквизитов организации." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null) return Unauthorized();
+
+        await using var ms = new MemoryStream();
+        await document.CopyToAsync(ms);
+
+        var now = DateTime.UtcNow;
+        var profile = await _context.LegalEntityProfiles.FirstOrDefaultAsync(p => p.UserId == userId.Value);
+        if (profile == null)
+        {
+            profile = new LegalEntityProfile { UserId = userId.Value };
+            _context.LegalEntityProfiles.Add(profile);
+        }
+
+        profile.CompanyFullName = dto.CompanyFullName.Trim();
+        profile.CompanyShortName = dto.CompanyShortName.Trim();
+        profile.Inn = inn;
+        profile.Ogrn = ogrn;
+        profile.Kpp = kpp;
+        profile.DirectorFullName = dto.DirectorFullName.Trim();
+        profile.DirectorBirthDate = dto.DirectorBirthDate;
+        profile.DocumentFileName = Path.GetFileName(document.FileName);
+        profile.DocumentContent = ms.ToArray();
+        profile.VerifiedAt = now;
+
+        user.AccountType = "Legal";
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new
+        {
+            message = "Верификация завершена. Кабинет переведён в режим юридического лица.",
+            accountType = "Legal"
         });
     }
 

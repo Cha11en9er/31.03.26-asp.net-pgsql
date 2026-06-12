@@ -24,6 +24,22 @@
         </p>
     </section>
 
+    <section class="panel" id="legalEntityPanel" style="margin-bottom:16px; display:none;">
+        <h2>Юридическое лицо</h2>
+        <p class="muted">Для работы от имени организации пройдите верификацию и загрузите подтверждающий документ в формате PDF.</p>
+        <label class="checkbox-row">
+            <input type="checkbox" id="legalConsent" />
+            <span>Я даю согласие на обработку персональных данных и подтверждаю начало верификации юридического лица</span>
+        </label>
+        <button class="btn" type="button" id="startLegalBtn" disabled>Начать верификацию</button>
+    </section>
+
+    <section class="panel" id="legalEntityDone" style="margin-bottom:16px; display:none;">
+        <h2>Кабинет юридического лица</h2>
+        <p><span class="badge badge-legal">Верификация пройдена</span></p>
+        <p class="muted">Ваш кабинет работает в режиме юридического лица. Реквизиты доступны в профиле.</p>
+    </section>
+
     <section class="grid grid-2">
         <div class="panel">
             <h2>Каталог услуг</h2>
@@ -36,8 +52,53 @@
             <div id="news" class="news-list">Загрузка...</div>
         </div>
     </section>
-
 </main>
+
+<div class="modal-backdrop" id="legalModal">
+    <div class="modal">
+        <h2>Верификация юридического лица</h2>
+        <p class="muted">Заполните реквизиты организации по данным ЕГРЮЛ и загрузите PDF-документ.</p>
+        <form id="legalForm" class="form-grid">
+            <div>
+                <label for="companyFullName">Полное наименование (до 500 символов)</label>
+                <input id="companyFullName" type="text" maxlength="500" required />
+            </div>
+            <div>
+                <label for="companyShortName">Сокращённое наименование (до 160 символов)</label>
+                <input id="companyShortName" type="text" maxlength="160" required />
+            </div>
+            <div>
+                <label for="inn">ИНН (10 цифр)</label>
+                <input id="inn" type="text" maxlength="10" pattern="[0-9]{10}" inputmode="numeric" required />
+            </div>
+            <div>
+                <label for="ogrn">ОГРН (13 цифр)</label>
+                <input id="ogrn" type="text" maxlength="13" pattern="[0-9]{13}" inputmode="numeric" required />
+            </div>
+            <div>
+                <label for="kpp">КПП (9 цифр)</label>
+                <input id="kpp" type="text" maxlength="9" pattern="[0-9]{9}" inputmode="numeric" required />
+            </div>
+            <div>
+                <label for="directorFullName">ФИО руководителя</label>
+                <input id="directorFullName" type="text" maxlength="200" required />
+            </div>
+            <div>
+                <label for="directorBirthDate">Дата рождения руководителя</label>
+                <input id="directorBirthDate" type="date" required />
+            </div>
+            <div>
+                <label for="legalDocument">Документ PDF, подтверждающий юридический статус</label>
+                <input id="legalDocument" type="file" accept=".pdf,application/pdf" required />
+            </div>
+        </form>
+        <div class="modal-actions">
+            <button class="btn btn-light" type="button" id="fillDemoBtn">Заполнить пример</button>
+            <button class="btn btn-light" type="button" id="closeLegalModalBtn">Отмена</button>
+            <button class="btn" type="button" id="submitLegalBtn">Готово</button>
+        </div>
+    </div>
+</div>
 
 <footer class="footer">
     <div class="footer-inner">
@@ -47,8 +108,33 @@
 </footer>
 
 <script>
+let profileData = null;
+
 function money(v) {
     return new Intl.NumberFormat('ru-RU').format(Number(v || 0)) + ' ₽';
+}
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s ?? '';
+    return d.innerHTML;
+}
+
+function digits(len) {
+    let s = '';
+    for (let i = 0; i < len; i++) s += Math.floor(Math.random() * 10);
+    return s;
+}
+
+function fillDemoLegalData() {
+    document.getElementById('companyFullName').value =
+        'Общество с ограниченной ответственностью «ТеплоЭнерго Снабжение»';
+    document.getElementById('companyShortName').value = 'ООО «ТеплоЭнерго Снабжение»';
+    document.getElementById('inn').value = '7704' + digits(6);
+    document.getElementById('ogrn').value = '1027700' + digits(6);
+    document.getElementById('kpp').value = '770401001';
+    document.getElementById('directorFullName').value = 'Смирнов Алексей Викторович';
+    document.getElementById('directorBirthDate').value = '1978-06-14';
 }
 
 async function loadProducts() {
@@ -109,36 +195,137 @@ async function orderProduct(productId) {
     alert(data.message || 'Услуга подключена');
 }
 
-function escapeHtml(s) {
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
-async function init() {
-    renderAuthActions();
-    await Promise.all([loadProducts(), loadNews()]);
-}
-
 function renderAuthActions() {
     const wrap = document.getElementById('authActions');
     const token = localStorage.getItem('token');
 
     if (!token) {
         wrap.innerHTML = '<a class="btn btn-light" href="login.html">Авторизация</a>';
+        document.getElementById('legalEntityPanel').style.display = 'none';
+        document.getElementById('legalEntityDone').style.display = 'none';
         return;
     }
 
     wrap.innerHTML = `
+        <button class="btn btn-light" type="button" id="legalMenuBtn">Юридическое лицо</button>
         <a class="btn btn-light" href="profile.html">Профиль</a>
         <button class="btn btn-light" id="logoutBtn" type="button">Выйти</button>
     `;
 
-    const logoutBtn = document.getElementById('logoutBtn');
-    logoutBtn.addEventListener('click', () => {
+    document.getElementById('logoutBtn').addEventListener('click', () => {
         localStorage.removeItem('token');
         window.location.href = 'index.html';
     });
+
+    document.getElementById('legalMenuBtn').addEventListener('click', () => {
+        if (profileData?.user?.accountType === 'Legal') {
+            document.getElementById('legalEntityDone').scrollIntoView({ behavior: 'smooth' });
+            return;
+        }
+        document.getElementById('legalEntityPanel').scrollIntoView({ behavior: 'smooth' });
+    });
+}
+
+function updateLegalPanels() {
+    const token = localStorage.getItem('token');
+    const panel = document.getElementById('legalEntityPanel');
+    const done = document.getElementById('legalEntityDone');
+    if (!token) {
+        panel.style.display = 'none';
+        done.style.display = 'none';
+        return;
+    }
+    if (profileData?.user?.accountType === 'Legal') {
+        panel.style.display = 'none';
+        done.style.display = 'block';
+    } else {
+        panel.style.display = 'block';
+        done.style.display = 'none';
+    }
+}
+
+async function loadProfileIfAuth() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    const res = await fetch('/api/profile', {
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) return;
+    profileData = await res.json();
+    updateLegalPanels();
+}
+
+function openLegalModal() {
+    document.getElementById('legalModal').classList.add('open');
+}
+
+function closeLegalModal() {
+    document.getElementById('legalModal').classList.remove('open');
+}
+
+async function submitLegalVerification() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        window.location.href = 'login.html';
+        return;
+    }
+
+    const fileInput = document.getElementById('legalDocument');
+    if (!fileInput.files.length) {
+        alert('Загрузите PDF-документ.');
+        return;
+    }
+
+    const form = new FormData();
+    form.append('companyFullName', document.getElementById('companyFullName').value.trim());
+    form.append('companyShortName', document.getElementById('companyShortName').value.trim());
+    form.append('inn', document.getElementById('inn').value.trim());
+    form.append('ogrn', document.getElementById('ogrn').value.trim());
+    form.append('kpp', document.getElementById('kpp').value.trim());
+    form.append('directorFullName', document.getElementById('directorFullName').value.trim());
+    form.append('directorBirthDate', document.getElementById('directorBirthDate').value);
+    form.append('document', fileInput.files[0]);
+
+    const btn = document.getElementById('submitLegalBtn');
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/profile/legal-verification', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: form
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            alert(data.message || 'Не удалось завершить верификацию.');
+            return;
+        }
+        alert(data.message || 'Верификация завершена.');
+        closeLegalModal();
+        await loadProfileIfAuth();
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function bindLegalUi() {
+    const consent = document.getElementById('legalConsent');
+    const startBtn = document.getElementById('startLegalBtn');
+    consent.addEventListener('change', () => {
+        startBtn.disabled = !consent.checked;
+    });
+    startBtn.addEventListener('click', openLegalModal);
+    document.getElementById('closeLegalModalBtn').addEventListener('click', closeLegalModal);
+    document.getElementById('fillDemoBtn').addEventListener('click', fillDemoLegalData);
+    document.getElementById('submitLegalBtn').addEventListener('click', submitLegalVerification);
+    document.getElementById('legalModal').addEventListener('click', (e) => {
+        if (e.target.id === 'legalModal') closeLegalModal();
+    });
+}
+
+async function init() {
+    bindLegalUi();
+    renderAuthActions();
+    await Promise.all([loadProducts(), loadNews(), loadProfileIfAuth()]);
 }
 
 init().catch(() => {});
