@@ -83,7 +83,9 @@ async function confirmEmail() {
     }
 
     const err = await res.json().catch(() => ({}));
-    alert(err.message || 'Неверный или просроченный токен');
+    alert(err.message || 'Капча введена неверно. Попробуйте ещё раз.');
+    document.getElementById('captcha-answer').value = '';
+    document.getElementById('captcha-answer').focus();
 }
 </script>
 </body>

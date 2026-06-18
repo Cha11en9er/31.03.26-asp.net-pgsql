@@ -61,9 +61,18 @@ public sealed class CaptchaService
         if (!_challenges.TryGetValue(captchaId, out var item))
             return false;
 
+        if (item.ExpiresAt < DateTime.UtcNow)
+        {
+            _challenges.TryRemove(captchaId, out _);
+            return false;
+        }
+
         var normalized = (answer ?? string.Empty).Trim().ToLowerInvariant();
-        var ok = normalized == item.Answer && item.ExpiresAt >= DateTime.UtcNow;
-        _challenges.TryRemove(captchaId, out _);
+        var ok = normalized == item.Answer;
+        // Удаляем challenge только при успехе — иначе после ошибки повторный ввод невозможен.
+        if (ok)
+            _challenges.TryRemove(captchaId, out _);
+
         return ok;
     }
 
