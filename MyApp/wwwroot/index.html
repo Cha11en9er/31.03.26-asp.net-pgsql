@@ -107,6 +107,17 @@
     </div>
 </footer>
 
+<div class="cookie-banner" id="cookieBanner" role="dialog" aria-label="Уведомление о cookie" hidden>
+    <div class="cookie-banner-inner">
+        <p class="cookie-banner-text">
+            Мы используем файлы cookie и локальное хранилище браузера для работы личного кабинета,
+            авторизации и сохранения настроек. Продолжая пользоваться порталом, вы соглашаетесь
+            с их использованием.
+        </p>
+        <button class="btn" type="button" id="cookieAcceptBtn">Понятно</button>
+    </div>
+</div>
+
 <script>
 let profileData = null;
 
@@ -322,7 +333,22 @@ function bindLegalUi() {
     });
 }
 
+function bindCookieBanner() {
+    const banner = document.getElementById('cookieBanner');
+    const btn = document.getElementById('cookieAcceptBtn');
+    if (!banner || !btn) return;
+
+    if (localStorage.getItem('cookieConsentAccepted') === '1') return;
+
+    banner.hidden = false;
+    btn.addEventListener('click', () => {
+        localStorage.setItem('cookieConsentAccepted', '1');
+        banner.hidden = true;
+    });
+}
+
 async function init() {
+    bindCookieBanner();
     bindLegalUi();
     renderAuthActions();
     await Promise.all([loadProducts(), loadNews(), loadProfileIfAuth()]);

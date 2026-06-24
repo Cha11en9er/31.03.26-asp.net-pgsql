@@ -377,6 +377,36 @@ input {
     word-break: break-word;
 }
 
+.cookie-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1100;
+    padding: 16px 20px;
+    background: #fff;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 24px rgba(24, 53, 120, 0.12);
+}
+
+.cookie-banner-inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.cookie-banner-text {
+    margin: 0;
+    flex: 1 1 320px;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
 @media (max-width: 960px) {
     .grid-2,
     .grid-4,
